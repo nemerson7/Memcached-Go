@@ -36,7 +36,7 @@ func main() {
 
 		query, _ := scan.ReadString('\n')
 
-		keyword := strings.Split(query, " ")[0]
+		keyword := trimString(strings.Split(query, " ")[0])
 
 		if keyword == "exit" {
 			fmt.Print("Exiting program... \n")
@@ -46,11 +46,9 @@ func main() {
 		}
 
 		if keyword == "set" {
-
 			fmt.Printf("Value to send: ")
 			query1, _ := scan.ReadString('\n')
 			query += query1
-
 		}
 
 		fmt.Fprintf(c, trimString(query)+"\r\n")
