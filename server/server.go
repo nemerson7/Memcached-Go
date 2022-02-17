@@ -15,6 +15,31 @@ import (
 var mutex sync.RWMutex
 var varTable map[string]string
 
+/*
+
+	Questions for office hours:
+	- can I ignore byte overflows and just represent every value as a string?
+		- if not, how should byte overflows of input values be handled?
+	- can I add the extra 0 for zero flags when parsing? (to make it work with pymemcache)
+	- when should it return NOT-STORED? like on error handling? What if there are no errors I've found so far
+	- how do I test for concurrency errors in edge-case situations?
+
+*/
+
+/*
+	Program execution: cd into the directory of server.go,
+	Enter command: go run server.go <port #>
+
+	Expected message formats:
+		From client:
+			get <identifier> \r\n
+			set <identifier> <size in bytes> \r\n <byte block> \r\n
+		To client:
+			Successful set: STORED\r\n
+			Failed set: NOT-STORED\r\n
+			Get: VALUE <identifier> <number of flags> <size in bytes> \r\n<value>\r\n
+
+*/
 
 func main() {
 
@@ -35,7 +60,7 @@ func main() {
 	}
 	//end port validation
 
-	//loading varTable if saved previously
+	//loading varTable from persistent storage if saved previously
 	establishVarTable()
 
 	listener, err := net.Listen("tcp", "localhost:"+strconv.Itoa(port))
@@ -50,7 +75,7 @@ func main() {
 	for {
 		connection, err := listener.Accept()
 		if err != nil {
-			//panic(err)
+			fmt.Print("Connection error with address " + connection.RemoteAddr().String() + "\n")
 		}
 		go handler(connection)
 	}
@@ -63,9 +88,10 @@ func handler(connection net.Conn) {
 		b := make([]byte, 512)
 		_, err := connection.Read(b)
 		if err != nil {
-			//panic(err)
+			fmt.Print("Error reading message from address " + connection.RemoteAddr().String() + "\n")
 		}
 
+		//processing message
 		s := string(b)
 		split := strings.Split(s, " ")
 
@@ -82,9 +108,10 @@ func handler(connection net.Conn) {
 				fmt.Print("Invalid byte size: " + split[2])
 			}
 
-			val := strings.Split(s, "\n")[1][:size]
 			//also truncate val to be the appropriate size in bytees
+			val := strings.Split(s, "\n")[1][:size]
 
+			//mutex utilized to guarantee map is not read or written at the same time
 			mutex.Lock()
 			response = setRequest(split[1], val)
 			mutex.Unlock()
@@ -96,6 +123,7 @@ func handler(connection net.Conn) {
 			mutex.RUnlock()
 
 		} else {
+			fmt.Print("Unknown command " + split[0] + " from address " + connection.LocalAddr().String() + "\n")
 			break
 		}
 
@@ -112,7 +140,11 @@ func setRequest(id_raw string, val string) string {
 	varTable[id] = trimString(val)
 
 	//write table to persistent storage when mutated
-	writeVarTable()
+	err := writeVarTable()
+
+	if err != nil {
+		return "NOT-STORED\r\n"
+	}
 
 	return "STORED\r\n"
 }
@@ -159,18 +191,20 @@ func establishVarTable() {
 }
 
 //writes map to persistent storage
-func writeVarTable() {
+func writeVarTable() error {
 	b := new(bytes.Buffer)
 	e := gob.NewEncoder(b)
 	e.Encode(varTable)
 	path, _ := filepath.Abs("../server/varTable.ser")
 	err := os.WriteFile(path, b.Bytes(), 0644)
 	if err != nil {
-		panic(err)
+		return err
+	} else {
+		return nil
 	}
 }
 
-//Added because pymemcache would append a bunch of null characters to key in get requests
+//Added this because pymemcache would append a bunch of null characters to key in get requests
 //but wouldn't in set requests for some reason
 //so this makes them both consistent
 func trimString(x string) string {
