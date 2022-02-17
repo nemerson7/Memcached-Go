@@ -15,16 +15,6 @@ import (
 var mutex sync.RWMutex
 var varTable map[string]string
 
-/*
-
-	Questions for office hours:
-	- can I ignore byte overflows and just represent every value as a string?
-		- if not, how should byte overflows of input values be handled?
-	- can I add the extra 0 for zero flags when parsing? (to make it work with pymemcache)
-	- when should it return NOT-STORED? like on error handling? What if there are no errors I've found so far
-	- how do I test for concurrency errors in edge-case situations?
-
-*/
 
 func main() {
 
