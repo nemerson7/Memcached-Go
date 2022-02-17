@@ -16,6 +16,17 @@ var mutex sync.RWMutex
 var varTable map[string]string
 
 /*
+
+	Questions for office hours:
+	- can I ignore byte overflows and just represent every value as a string?
+		- if not, how should byte overflows of input values be handled?
+	- can I add the extra 0 for zero flags when parsing? (to make it work with pymemcache)
+	- when should it return NOT-STORED? like on error handling? What if there are no errors I've found so far
+	- how do I test for concurrency errors in edge-case situations?
+
+*/
+
+/*
 	Program execution: cd into the directory of server.go,
 	Enter command: go run server.go <port #>
 
@@ -68,6 +79,7 @@ func main() {
 		}
 		go handler(connection)
 	}
+
 }
 
 func handler(connection net.Conn) {
@@ -90,15 +102,20 @@ func handler(connection net.Conn) {
 
 		if split[0] == "set" {
 
-			//note: last part of split (index 2) contain sizes of bytes \n value_to_set
-			//the following line strips off the "\n value_to_set" so the byte size can be casted
-			size, err := strconv.Atoi(strings.Split(split[2], "\n")[0])
+			tmpSplit := strings.Split(strings.Split(s, "\n")[0], " ")
+			size, err := strconv.Atoi(trimString(tmpSplit[len(tmpSplit)-1]))
 			if err != nil {
-				fmt.Print("Invalid byte size: " + split[2])
+				fmt.Print("Error casting value " + tmpSplit[len(tmpSplit)-1])
 			}
 
-			//also truncate val to be the appropriate size in bytees
-			val := strings.Split(s, "\n")[1][:size]
+			//also truncate val to be the appropriate size in bytes
+			tmp := strings.Split(s, "\n")[1]
+			var val string
+			if size < len(tmp)-1 {
+				val = tmp[:size]
+			} else {
+				val = tmp[:len(tmp)-1]
+			}
 
 			//mutex utilized to guarantee map is not read or written at the same time
 			mutex.Lock()
@@ -125,7 +142,6 @@ func handler(connection net.Conn) {
 //client is writing a var
 func setRequest(id_raw string, val string) string {
 	id := trimString(id_raw)
-
 	varTable[id] = trimString(val)
 
 	//write table to persistent storage when mutated
